@@ -1,0 +1,13 @@
+{
+  "name": "duka-pos",
+  "version": "1.0.0",
+  "description": "Duka POS Kenya — Full Stack Retail System",
+  "scripts": {
+    "start": "node backend/server.js",
+    "setup": "cd backend && npm install && node migrate.js",
+    "dev": "cd backend && npm run dev"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

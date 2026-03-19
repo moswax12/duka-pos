@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Duka POS — Kenya Retail System</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#f97316">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Duka POS">
+<link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0d1117;--surface:#161b22;--surface2:#1f2937;--border:#30363d;--accent:#f97316;--accent2:#10b981;--accent3:#3b82f6;--danger:#ef4444;--text:#e6edf3;--text-muted:#8b949e;--text-dim:#484f58;--card-bg:#1c2128;--green:#10b981;--yellow:#f59e0b}
@@ -963,6 +969,15 @@ function showToast(msg){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 if(token&&currentUser)onLoggedIn();
+
+// Register Service Worker (PWA)
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js")
+      .then(r => console.log("SW registered:", r.scope))
+      .catch(e => console.log("SW error:", e));
+  });
+}
 else document.getElementById('loginScreen').style.display='flex';
 </script>
 </body>

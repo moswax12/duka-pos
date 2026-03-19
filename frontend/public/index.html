@@ -4,17 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Duka POS — Kenya Retail System</title>
-<link rel="manifest" href="/manifest.json">
-<meta name="theme-color" content="#f97316">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Duka POS">
-<link rel="apple-touch-icon" href="/icons/icon-192.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Duka POS">
-<link rel="apple-touch-icon" href="/icon-192.png">
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
 <style>
 :root{--bg:#0d1117;--surface:#161b22;--surface2:#1f2937;--border:#30363d;--accent:#f97316;--accent2:#10b981;--accent3:#3b82f6;--danger:#ef4444;--text:#e6edf3;--text-muted:#8b949e;--text-dim:#484f58;--card-bg:#1c2128;--green:#10b981;--yellow:#f59e0b}
@@ -264,7 +253,6 @@ select.form-input option{background:var(--surface)}
     <div class="cashier-badge"><b id="cashierName">—</b></div>
     <span class="role-pill" id="rolePill">cashier</span>
     <div class="clock" id="clock">--:--</div>
-    <span id="onlineStatus" style="font-size:.78rem">🟢 Online</span>
     <button class="logout-btn" onclick="logout()">Logout</button>
   </div>
 </div>
@@ -461,8 +449,6 @@ select.form-input option{background:var(--surface)}
 </div>
 
 <div class="toast" id="toast"></div>
-<script src="/db-local.js"></script>
-<script src="/sync.js"></script>
 
 <script>
 const API_BASE = window.location.origin + '/api';
@@ -522,34 +508,21 @@ function onLoggedIn() {
   const rp=document.getElementById('rolePill');
   rp.textContent=currentUser.role;
   rp.className='role-pill '+(currentUser.role==='admin'?'purple':'green');
+  // Show admin-only nav items
   const isAdmin=currentUser.role==='admin';
   ['navInventory','navUsers','navSettings'].forEach(id=>
     document.getElementById(id).style.display=isAdmin?'':'none'
   );
-  // Setup offline sync
-  SyncManager.setToken(token);
-  SyncManager.updateStatusUI();
-  // Try to sync from server first, then load from local
-  SyncManager.syncFromServer().then(() => {
-    loadSettings();
-    loadCategories();
-    loadProducts();
-  }).catch(() => {
-    // Offline - load from local DB
-    loadSettings();
-    loadCategories();
-    loadProducts();
-  });
+  loadSettings();
+  loadCategories();
+  loadProducts();
 }
 
 // ── SETTINGS ──────────────────────────────────────────────────────────────────
 async function loadSettings() {
   try {
-    if (SyncManager.isOnline()) {
-      shopSettings=await api('/settings');
-    } else {
-      shopSettings=await SyncManager.localGetSettings();
-    }
+    shopSettings=await api('/settings');
+    // Update logo
     const name=shopSettings.shop_name||'Duka POS';
     document.getElementById('shopLogo').innerHTML=`${name} <span>Kenya Retail</span>`;
     document.title=name+' — POS';
@@ -600,7 +573,7 @@ async function changePassword() {
 // ── CATEGORIES ────────────────────────────────────────────────────────────────
 async function loadCategories() {
   try {
-    allCategories=SyncManager.isOnline()?await api('/categories'):await SyncManager.localGetCategories();
+    allCategories=await api('/categories');
     const tabs=document.getElementById('categoryTabs');
     tabs.innerHTML='';
     ['All',...allCategories.map(c=>c.name)].forEach(cat=>{
@@ -615,14 +588,7 @@ async function loadCategories() {
 
 // ── PRODUCTS ──────────────────────────────────────────────────────────────────
 async function loadProducts() {
-  try {
-    if (SyncManager.isOnline()) {
-      allProducts=await api('/products');
-    } else {
-      allProducts=await SyncManager.localGetProducts();
-    }
-    renderProducts();
-  }
+  try { allProducts=await api('/products'); renderProducts(); }
   catch(e){ document.getElementById('productsGrid').innerHTML=`<div class="loading-grid" style="color:var(--danger)">Failed to load products.</div>`; }
 }
 
@@ -730,19 +696,9 @@ async function checkout() {
   const btn=document.getElementById('checkoutBtn');btn.disabled=true;btn.textContent='Processing…';
   const customer=document.getElementById('customerInput').value.trim()||'Walk-in Customer';
   const discount_pct=parseFloat(document.getElementById('discountInput').value)||0;
-  const items=cart.map(i=>({product_id:i.id,qty:i.qty}));
   try {
-    let txn;
-    if (SyncManager.isOnline()) {
-      txn=await api('/transactions',{method:'POST',body:JSON.stringify({customer,items,discount_pct,payment:selectedPayment})});
-      allProducts=await api('/products');
-    } else {
-      // Save offline
-      txn=await SyncManager.localCheckout({customer,items,discount_pct,payment:selectedPayment,cashier:currentUser.name});
-      allProducts=await SyncManager.localGetProducts();
-      showToast('💾 Sale saved offline — will sync when online');
-    }
-    renderProducts();
+    const txn=await api('/transactions',{method:'POST',body:JSON.stringify({customer,items:cart.map(i=>({product_id:i.id,qty:i.qty})),discount_pct,payment:selectedPayment})});
+    allProducts=await api('/products');renderProducts();
     showReceipt(txn,customer);clearCart();
   } catch(e){showToast('❌ '+e.message);}
   finally{btn.disabled=false;btn.textContent='Complete Sale';}
@@ -961,7 +917,7 @@ async function loadUsers() {
 async function loadReports() {
   const cur=shopSettings.currency||'KSh';
   try {
-    const s=SyncManager.isOnline()?await api('/reports/summary'):await SyncManager.localGetSummary();
+    const s=await api('/reports/summary');
     document.getElementById('rTotalSales').textContent=`${cur} ${Number(s.revenue).toFixed(2)}`;
     document.getElementById('rTxnCount').textContent=`${s.transactions} transaction${s.transactions!==1?'s':''}`;
     document.getElementById('rMpesa').textContent=`${cur} ${Number(s.mpesa).toFixed(2)}`;
@@ -969,7 +925,7 @@ async function loadReports() {
     document.getElementById('rCard').textContent=`${cur} ${Number(s.card).toFixed(2)}`;
     document.getElementById('rItems').textContent=s.units_sold;
     document.getElementById('rVat').textContent=`${cur} ${Number(s.vat_collected).toFixed(2)}`;
-    const txns=SyncManager.isOnline()?await api('/transactions'):await SyncManager.localGetTransactions();
+    const txns=await api('/transactions');
     document.getElementById('txnBody').innerHTML=txns.length?txns.slice(0,100).map((t,i)=>`
       <tr>
         <td style="color:var(--text-dim)">${i+1}</td>
@@ -1007,77 +963,7 @@ function showToast(msg){
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 if(token&&currentUser)onLoggedIn();
-
-// Register Service Worker (PWA)
-if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => {
-    navigator.serviceWorker.register("/sw.js")
-      .then(r => console.log("SW registered:", r.scope))
-      .catch(e => console.log("SW error:", e));
-  });
-}
 else document.getElementById('loginScreen').style.display='flex';
 </script>
-
-<!-- PWA INSTALL BANNER -->
-<div id="installBanner" style="display:none;position:fixed;bottom:0;left:0;right:0;background:#1c2128;border-top:1px solid #30363d;padding:12px 20px;z-index:500;display:none;align-items:center;justify-content:space-between;gap:12px">
-  <div style="display:flex;align-items:center;gap:10px">
-    <img src="/icons/icon-72.png" style="width:36px;height:36px;border-radius:8px">
-    <div>
-      <div style="font-family:'Syne',sans-serif;font-weight:700;font-size:.9rem;color:#e6edf3">Install Duka POS</div>
-      <div style="font-size:.75rem;color:#8b949e">Add to home screen for quick access</div>
-    </div>
-  </div>
-  <div style="display:flex;gap:8px;flex-shrink:0">
-    <button onclick="dismissInstall()" style="padding:6px 14px;border-radius:7px;border:1px solid #30363d;background:transparent;color:#8b949e;font-size:.8rem;cursor:pointer">Not now</button>
-    <button onclick="installApp()" style="padding:6px 16px;border-radius:7px;border:none;background:#f97316;color:#fff;font-family:'Syne',sans-serif;font-weight:700;font-size:.8rem;cursor:pointer">Install App</button>
-  </div>
-</div>
-
-<script>
-// ── PWA SERVICE WORKER ────────────────────────────────────────────────────────
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js')
-      .then(reg => console.log('SW registered:', reg.scope))
-      .catch(err => console.log('SW failed:', err));
-  });
-}
-
-// ── PWA INSTALL PROMPT ────────────────────────────────────────────────────────
-let deferredPrompt = null;
-window.addEventListener('beforeinstallprompt', e => {
-  e.preventDefault();
-  deferredPrompt = e;
-  // Show banner after 3 seconds
-  setTimeout(() => {
-    const banner = document.getElementById('installBanner');
-    if (banner) banner.style.display = 'flex';
-  }, 3000);
-});
-
-async function installApp() {
-  if (!deferredPrompt) {
-    showToast('To install: tap the browser menu → "Add to Home Screen"');
-    return;
-  }
-  deferredPrompt.prompt();
-  const { outcome } = await deferredPrompt.userChoice;
-  if (outcome === 'accepted') showToast('✓ Duka POS installed!');
-  deferredPrompt = null;
-  dismissInstall();
-}
-
-function dismissInstall() {
-  const banner = document.getElementById('installBanner');
-  if (banner) banner.style.display = 'none';
-}
-
-window.addEventListener('appinstalled', () => {
-  showToast('✓ App installed successfully!');
-  dismissInstall();
-});
-</script>
-
 </body>
 </html>
